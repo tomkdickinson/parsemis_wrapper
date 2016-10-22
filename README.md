@@ -2,12 +2,15 @@
 
 This script is a wrapper for the frequent subgraph mining library ParSeMiS.
 
+The original project can be found: https://www2.informatik.uni-erlangen.de/EN/research/zold/ParSeMiS/index.html
+
+The source code for the java lib can be found: https://github.com/tomkdickinson/parsemis_wrapper
+
 # Instructions
 
 The script includes a class called Parsemis, which you can pass the same
 parameters too if you were using ParSeMiS on the command line. The input
 for the graph method are graphs built using NetworkX. 
-
 
 # Requriements
 
