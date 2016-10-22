@@ -4,6 +4,5 @@ setup(name='parsemis',
       description="A simple wrapper for ParSeMiS",
       author="Tom Dickinson",
       author_email="tomkdickinson@gmail.com",
-      py_modules=['parsemis'],
-      data_files=[('.', ['parsemis.jar'])]
-      )
+      py_modules=['parsemis']
+)
