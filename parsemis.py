@@ -8,7 +8,7 @@ https://www2.informatik.uni-erlangen.de/EN/research/zold/ParSeMiS/index.html
 import subprocess
 import networkx as nx
 import logging as log
-import re
+import os
 
 
 class ParsemisMiner:
@@ -19,13 +19,15 @@ class ParsemisMiner:
     that are required for parsing.
     """
 
-    def __init__(self, data_location, parsemis_location="./parsemis.jar", minimum_frequency="5%", close_graph=False,
+    def __init__(self, data_location, parsemis_location, minimum_frequency="5%", close_graph=False,
                  maximum_frequency=None, minimum_node_count=None, maximum_node_count=None, minimum_edge_count=None,
                  maximum_edge_count=None, find_paths_only=False, find_trees_only=False, single_rooted=False,
-                 connected_fragments=False, algorithm="gspan", subdue=False, zaretsky=False, distribution="local",
+                 connected_fragments=True, algorithm="gspan", subdue=False, zaretsky=False, distribution="local",
                  threads=1):
 
         self.data_location = data_location
+        os.makedirs(self.data_location, exist_ok=True)
+
         self.parsemis_location = parsemis_location
         self.minimum_frequency = minimum_frequency
         self.maximum_frequency = maximum_frequency
@@ -138,20 +140,24 @@ class ParsemisMiner:
         with open(file, "r") as f:
             graph_map = {}
             node_map = {}
-            graph_id = 1
+            graph_id = 0
             for line in f.readlines():
                 line = line.strip()
                 if line.startswith("t #"):
                     node_map = {}
-                    graph_id = re.findall("\d+$", line)[0]
+                    graph_id += 1
                     graph = nx.Graph(id=graph_id)
                     graph_map[graph_id] = graph
                 elif line.startswith("v"):
                     parts = line.split(" ")
-                    graph_map[graph_id].add_node(parts[2].strip('\''))
-                    node_map[parts[1]] = parts[2].strip('\'')
+                    label = " ".join(parts[2:]).strip('\'')
+                    graph_map[graph_id].add_node(label)
+                    node_map[parts[1]] = label
                 elif line.startswith("e"):
                     parts = line.split(" ")
-                    graph_map[graph_id].add_edge(node_map[parts[1]], node_map[parts[2]], label=parts[3].strip('\''))
-            graphs += graph_map.values()
+                    label = " ".join(parts[3:]).strip('\'')
+                    graph_map[graph_id].add_edge(node_map[parts[1]], node_map[parts[2]], label=label)
+            for graph in graph_map:
+                graphs.append(graph_map[graph])
+
         return graphs
