@@ -5,34 +5,6 @@ from parsemis import ParsemisMiner
 import networkx as nx
 import os
 
-
-def subgraph_exists(supergraph, subgraph):
-    """
-    A quick subgraph method to see if a subgraph exists
-    Does not support full subgraph isomorphism.
-
-    :param supergraph: Parent graph
-    :param subgraph: sub-graph to check
-    :return: True if subgraph exists, false if not
-    """
-
-    if len(subgraph.nodes()) > len(supergraph.nodes()):
-        return False
-    for n in subgraph.nodes():
-        if n not in supergraph.nodes():
-            return False
-
-    if len(subgraph.edges()) > len(supergraph.edges()):
-        return False
-    for e in subgraph.edges():
-        edge_exist = False
-        for e2 in supergraph.edges():
-            if sorted(list(e)) == sorted(list(e2)):
-                edge_exist = True
-        if not edge_exist:
-            return False
-    return True
-
 # Load our graphs
 graph_folder = "example_dataset"
 graphs = []
@@ -40,14 +12,16 @@ for f in os.listdir(graph_folder):
     path = "%s/%s" % (graph_folder, f)
     graphs.append(nx.read_gml(path))
 
-frequent_graphs = ParsemisMiner("data", "parsemis.jar", minimum_frequency="2%", close_graph=True).mine_graphs(graphs)
+frequent_graphs = ParsemisMiner(
+    "data", "parsemis.jar", minimum_frequency="2%", close_graph=True, store_embeddings=True
+).mine_graphs(graphs)
 
 # Count our subgraphs
 frequent_graph_counts = []
 for frequent_graph in frequent_graphs:
     count = 0
     for graph in graphs:
-        if subgraph_exists(graph, frequent_graph):
+        if graph.graph['id'] in frequent_graph.graph['embeddings']:
             count += 1
     frequent_graph_counts.append((count, frequent_graph))
 

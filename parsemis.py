@@ -23,7 +23,7 @@ class ParsemisMiner:
                  maximum_frequency=None, minimum_node_count=None, maximum_node_count=None, minimum_edge_count=None,
                  maximum_edge_count=None, find_paths_only=False, find_trees_only=False, single_rooted=False,
                  connected_fragments=True, algorithm="gspan", subdue=False, zaretsky=False, distribution="local",
-                 threads=1):
+                 threads=1, store_embeddings=False):
 
         self.data_location = data_location
         os.makedirs(self.data_location, exist_ok=True)
@@ -61,6 +61,7 @@ class ParsemisMiner:
         else:
             raise Exception("Distribution must be: one of: %s" % ",".join(allowed_distributions))
         self.threads = int(threads)
+        self.store_embeddings = store_embeddings
 
     def mine_graphs(self, graphs):
         log.debug("Mining %i graphs" % len(graphs))
@@ -90,7 +91,8 @@ class ParsemisMiner:
                     "--subdue=%s" % self.subdue,
                     "--zaretsky=%s" % self.zaretsky,
                     "--distribution=%s" % self.distribution,
-                    "--threads=%s" % int(self.threads)
+                    "--threads=%s" % int(self.threads),
+                    "--storeEmbeddings=%s" % self.store_embeddings
                     ]
 
         if self.minimum_node_count is not None:
@@ -114,7 +116,10 @@ class ParsemisMiner:
         with open(file, "w") as f:
             for g_id, graph in enumerate(graphs):
                 try:
-                    f.write("t # %s\n" % g_id)
+                    if "id" in graph.graph:
+                        f.write("t # %s\n" % graph.graph['id'])
+                    else:
+                        f.write("t # %s\n" % g_id)
                     node_dict = {}
                     for n_id, n in enumerate(graph.nodes()):
                         node_dict[n] = n_id
@@ -146,7 +151,7 @@ class ParsemisMiner:
                 if line.startswith("t #"):
                     node_map = {}
                     graph_id += 1
-                    graph = nx.Graph(id=graph_id)
+                    graph = nx.DiGraph(id=graph_id, embeddings=[])
                     graph_map[graph_id] = graph
                 elif line.startswith("v"):
                     parts = line.split(" ")
@@ -157,6 +162,8 @@ class ParsemisMiner:
                     parts = line.split(" ")
                     label = " ".join(parts[3:]).strip('\'')
                     graph_map[graph_id].add_edge(node_map[parts[1]], node_map[parts[2]], label=label)
+                elif line.startswith("#=>"):
+                    graph_map[graph_id].graph['embeddings'].append(line.split(" ")[1])
             for graph in graph_map:
                 graphs.append(graph_map[graph])
 
