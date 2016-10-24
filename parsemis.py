@@ -118,11 +118,11 @@ class ParsemisMiner:
                     node_dict = {}
                     for n_id, n in enumerate(graph.nodes()):
                         node_dict[n] = n_id
-                        f.write("v %i \'%s\'\n" % (node_dict[n], n))
+                        f.write("v %i %s\n" % (node_dict[n], n))
                     for start in graph.edge:
                         edges = graph.edge[start]
                         for e in edges:
-                            f.write("e %i %i \'%s\'\n" % (node_dict[start], node_dict[e], edges[e]['label']))
+                            f.write("e %i %i %s\n" % (node_dict[start], node_dict[e], edges[e]['label']))
                 except Exception as e:
                     print(e)
             f.close()
