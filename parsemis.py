@@ -23,7 +23,7 @@ class ParsemisMiner:
                  maximum_frequency=None, minimum_node_count=None, maximum_node_count=None, minimum_edge_count=None,
                  maximum_edge_count=None, find_paths_only=False, find_trees_only=False, single_rooted=False,
                  connected_fragments=True, algorithm="gspan", subdue=False, zaretsky=False, distribution="local",
-                 threads=1, store_embeddings=False):
+                 threads=1, store_embeddings=False, debug=False):
 
         self.data_location = data_location
         os.makedirs(self.data_location, exist_ok=True)
@@ -62,6 +62,10 @@ class ParsemisMiner:
             raise Exception("Distribution must be: one of: %s" % ",".join(allowed_distributions))
         self.threads = int(threads)
         self.store_embeddings = store_embeddings
+        if debug:
+            self.debug_statement = "-Dverbose=true"
+        else:
+            self.debug_statement = None
 
     def mine_graphs(self, graphs):
         log.debug("Mining %i graphs" % len(graphs))
@@ -94,6 +98,8 @@ class ParsemisMiner:
                     "--threads=%s" % int(self.threads),
                     "--storeEmbeddings=%s" % self.store_embeddings
                     ]
+        if self.debug_statement is not None:
+            commands.insert(2, self.debug_statement)
 
         if self.minimum_node_count is not None:
             commands.append("--minimumNodeCount=%i" % self.minimum_node_count)

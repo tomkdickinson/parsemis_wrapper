@@ -13,7 +13,7 @@ for f in os.listdir(graph_folder):
     graphs.append(nx.read_gml(path))
 
 frequent_graphs = ParsemisMiner(
-    "data", "parsemis.jar", minimum_frequency="2%", close_graph=True, store_embeddings=True
+    "data", "parsemis.jar", minimum_frequency="2%", close_graph=True, store_embeddings=True, debug=True
 ).mine_graphs(graphs)
 
 # Count our subgraphs
