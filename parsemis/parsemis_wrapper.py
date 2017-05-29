@@ -9,6 +9,7 @@ import subprocess
 import networkx as nx
 import logging as log
 import os
+import re
 
 
 class ParsemisMiner:
@@ -19,16 +20,18 @@ class ParsemisMiner:
     that are required for parsing.
     """
 
-    def __init__(self, data_location, parsemis_location, minimum_frequency="5%", close_graph=False,
+    def __init__(self, data_location, parsemis_location=None, minimum_frequency="5%", close_graph=False,
                  maximum_frequency=None, minimum_node_count=None, maximum_node_count=None, minimum_edge_count=None,
                  maximum_edge_count=None, find_paths_only=False, find_trees_only=False, single_rooted=False,
                  connected_fragments=True, algorithm="gspan", subdue=False, zaretsky=False, distribution="local",
-                 threads=1, store_embeddings=False, debug=False):
+                 threads=1, store_embeddings=False, debug=False, mine_undirected=False):
 
         self.data_location = data_location
+        if parsemis_location is None:
+            self.parsemis_location = "%s/parsemis.jar" % os.path.dirname(os.path.realpath(__file__))
+
         os.makedirs(self.data_location, exist_ok=True)
 
-        self.parsemis_location = parsemis_location
         self.minimum_frequency = minimum_frequency
         self.maximum_frequency = maximum_frequency
         if minimum_node_count is not None and type(minimum_node_count) is not int:
@@ -67,24 +70,43 @@ class ParsemisMiner:
         else:
             self.debug_statement = None
 
+        self.mine_undirected = mine_undirected
+        if self.mine_undirected:
+            self.input_file = "%s/input.g" % self.data_location
+            self.output_file = "%s/output.g" % self.data_location
+        else:
+            self.input_file = "%s/input.lg" % self.data_location
+            self.output_file = "%s/output.lg" % self.data_location
+
+        if os.path.exists(self.input_file):
+            os.remove(self.input_file)
+        if os.path.exists(self.output_file):
+            os.remove(self.output_file)
+
     def mine_graphs(self, graphs):
         log.debug("Mining %i graphs" % len(graphs))
-
-        # First write the graphs to the input location
-        self.write_lg(graphs, "%s/input.lg" % self.data_location)
-
-        # Then perform pattern mining on those graphs
+        self.write_graph(graphs)
         self.perform_mining()
+        return self.read_graph(graphs)
 
-        # Finally read the graphs from the output location
-        return self.read_lg("%s/output.lg" % self.data_location)
+    def write_graph(self, graphs):
+        if self.mine_undirected:
+            self.write_g(graphs)
+        else:
+            self.write_lg(graphs)
+
+    def read_graph(self, graphs):
+        if self.mine_undirected:
+            return self.read_g(graphs)
+        else:
+            return self.read_lg()
 
     def perform_mining(self):
         commands = ['java', '-jar',
                     "-Xmx10g",
                     self.parsemis_location,
-                    "--graphFile=%s/input.lg" % self.data_location,
-                    "--outputFile=%s/output.lg" % self.data_location,
+                    "--graphFile=%s" % self.input_file,
+                    "--outputFile=%s" % self.output_file,
                     "--minimumFrequency=%s" % self.minimum_frequency,
                     "--findPathsOnly=%s" % self.find_paths_only,
                     "--findTreesOnly=%s" % self.find_trees_only,
@@ -113,13 +135,12 @@ class ParsemisMiner:
             commands.append("--maximumFrequency=%i" % self.maximum_frequency)
 
         log.debug(commands)
-
+        print(commands)
         subprocess.call(commands)
 
-    @staticmethod
-    def write_lg(graphs, file):
-        log.debug("Writing graphs to %s" % file)
-        with open(file, "w") as f:
+    def write_lg(self, graphs):
+        log.debug("Writing graphs to %s" % self.input_file)
+        with open(self.input_file, "w") as f:
             for g_id, graph in enumerate(graphs):
                 try:
                     if "id" in graph.graph:
@@ -135,20 +156,40 @@ class ParsemisMiner:
                         for e in edges:
                             f.write("e %i %i %s\n" % (node_dict[start], node_dict[e], edges[e]['label']))
                 except Exception as e:
-                    print(e)
+                    log.error(e)
             f.close()
 
-    @staticmethod
-    def read_lg(file):
+    def write_g(self, graphs):
+        log.debug("Writing graphs to %s" % self.input_file)
+        with open(self.input_file, "w") as f:
+            for g_id, graph in enumerate(graphs):
+                try:
+                    f.write("XP\n")
+                    node_dict = {}
+                    for n_id, n in enumerate(graph.nodes()):
+                        node_dict[n] = n_id + 1
+                        f.write("v %i %s\n" % (node_dict[n], n))
+                    for start in graph.edge:
+                        edges = graph.edge[start]
+                        for e in edges:
+                            if "label" in edges[e]:
+                                f.write("u %i %i %s\n" % (node_dict[start], node_dict[e], edges[e]['label']))
+                            else:
+                                f.write("u %i %i\n" % (node_dict[start], node_dict[e]))
+                except Exception as e:
+                    log.error(e)
+
+
+    def read_lg(self):
         """
         Reads an LineGraph file and converts it to a list of NetworkX Graph Objects
         :param file: LineGraph file to read
         :return: A list of LineGraph objects
         """
-        log.debug("Reading graphs from %s" % file)
+        log.debug("Reading graphs from %s" % self.output_file)
         graphs = []
 
-        with open(file, "r") as f:
+        with open(self.output_file, "r") as f:
             graph_map = {}
             node_map = {}
             graph_id = 0
@@ -174,3 +215,43 @@ class ParsemisMiner:
                 graphs.append(graph_map[graph])
 
         return graphs
+
+    def read_g(self, graphs):
+        log.debug("Reading graphs from %s" % self.output_file)
+        frequent_graphs = []
+        with open(self.output_file, "r") as f:
+            graph_map = {}
+            node_map = {}
+            graph_id = 0
+            for line in f.readlines():
+                line = line.strip()
+                if line.startswith("XP"):
+                    graph_id += 1
+                    node_map = {}
+                    graph_map[graph_id] = nx.Graph(id=graph_id, embeddings=[])
+                elif line.startswith("v"):
+                    node_id = line.split(" ")[1]
+                    label = " ".join(line.split(" ")[2:])
+                    graph_map[graph_id].add_node(label)
+                    node_map[node_id] = label
+                elif line.startswith("u"):
+                    start_node_id = line.split(" ")[1]
+                    end_node_id = line.split(" ")[2]
+                    label = None
+                    if len(line.split(" ")) >= 3:
+                        label = " ".join(line.split(" ")[3:])
+                    graph_map[graph_id].add_edge(node_map[start_node_id], node_map[end_node_id], label=label)
+                elif line.startswith("% => "):
+                    line = re.sub("(% => \d{1,}\[)", "", line)
+                    line = re.sub("\]$", "", line)
+                    for index in line.split(","):
+                        if index != "":
+                            appears_in_id = graphs[int(index.strip())].graph['id']
+                            graph_map[graph_id].graph['embeddings'].append(appears_in_id)
+
+            for graph in graph_map:
+                frequent_graphs.append(graph_map[graph])
+
+        return frequent_graphs
+
+

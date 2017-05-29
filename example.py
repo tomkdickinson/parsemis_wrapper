@@ -1,7 +1,7 @@
 """
 This short example shows how you can mine frequent graphs using the wrapper
 """
-from parsemis import ParsemisMiner
+from parsemis.parsemis_wrapper import ParsemisMiner
 import networkx as nx
 import os
 
@@ -13,7 +13,8 @@ for f in os.listdir(graph_folder):
     graphs.append(nx.read_gml(path))
 
 frequent_graphs = ParsemisMiner(
-    "data", "parsemis.jar", minimum_frequency="2%", close_graph=True, store_embeddings=True, debug=True
+    "data", minimum_frequency="1%", close_graph=True, store_embeddings=True, debug=True,
+    mine_undirected=True
 ).mine_graphs(graphs)
 
 # Count our subgraphs
