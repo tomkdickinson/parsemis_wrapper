@@ -12,6 +12,27 @@ import os
 import re
 
 
+class FrequentGraph:
+
+    def __init__(self, graph, appears_in) -> None:
+        super().__init__()
+        self._graph = graph
+        self._appears_in = appears_in
+        self._support = len(self._appears_in)
+
+    @property
+    def graph(self):
+        return self._graph
+
+    @property
+    def support(self):
+        return self._support
+
+    @property
+    def appears_in(self):
+        return self._appears_in
+
+
 class ParsemisMiner:
     """
     A basic wrapper for using ParSeMiS.
@@ -148,13 +169,17 @@ class ParsemisMiner:
                     else:
                         f.write("t # %s\n" % g_id)
                     node_dict = {}
+
                     for n_id, n in enumerate(graph.nodes()):
                         node_dict[n] = n_id
                         f.write("v %i %s\n" % (node_dict[n], n))
-                    for start in graph.edge:
-                        edges = graph.edge[start]
-                        for e in edges:
-                            f.write("e %i %i %s\n" % (node_dict[start], node_dict[e], edges[e]['label']))
+
+                    for edge in graph.edges():
+                        label = self.get_label_from_edge(graph, edge)
+                        if label is not None:
+                            f.write("e %i %i %s\n" % (node_dict[edge[0]], node_dict[edge[1]], label))
+                        else:
+                            f.write("e %i %i\n" % (node_dict[edge[0]], node_dict[edge[1]]))
                 except Exception as e:
                     log.error(e)
             f.close()
@@ -169,16 +194,25 @@ class ParsemisMiner:
                     for n_id, n in enumerate(graph.nodes()):
                         node_dict[n] = n_id + 1
                         f.write("v %i %s\n" % (node_dict[n], n))
-                    for start in graph.edge:
-                        edges = graph.edge[start]
-                        for e in edges:
-                            if "label" in edges[e]:
-                                f.write("u %i %i %s\n" % (node_dict[start], node_dict[e], edges[e]['label']))
-                            else:
-                                f.write("u %i %i\n" % (node_dict[start], node_dict[e]))
+                    for edge in graph.edges():
+                        label = self.get_label_from_edge(graph, edge)
+                        if label is not None:
+                            f.write("u %i %i %s\n" % (node_dict[edge[0]], node_dict[edge[1]], label))
+                        else:
+                            f.write("u %i %i\n" % (node_dict[edge[0]], node_dict[edge[1]]))
                 except Exception as e:
                     log.error(e)
 
+    @staticmethod
+    def get_label_from_edge(g, edge, label='label'):
+        label = nx.get_edge_attributes(g, label)
+        if label is None:
+            return None
+        return label[edge]
+
+    @staticmethod
+    def get_label_from_nodes(g, start_node, end_node, label='label'):
+        return ParsemisMiner.get_label_from_edge(g, (start_node, end_node), label)
 
     def read_lg(self):
         """
@@ -187,7 +221,7 @@ class ParsemisMiner:
         :return: A list of LineGraph objects
         """
         log.debug("Reading graphs from %s" % self.output_file)
-        graphs = []
+        frequent_graphs = []
 
         with open(self.output_file, "r") as f:
             graph_map = {}
@@ -211,10 +245,12 @@ class ParsemisMiner:
                     graph_map[graph_id].add_edge(node_map[parts[1]], node_map[parts[2]], label=label)
                 elif line.startswith("#=>"):
                     graph_map[graph_id].graph['embeddings'].append(line.split(" ")[1])
-            for graph in graph_map:
-                graphs.append(graph_map[graph])
 
-        return graphs
+            for graph in graph_map:
+                fg = FrequentGraph(graph_map[graph], graph_map[graph].graph['embeddings'])
+                frequent_graphs.append(fg)
+
+        return frequent_graphs
 
     def read_g(self, graphs):
         log.debug("Reading graphs from %s" % self.output_file)
@@ -250,7 +286,8 @@ class ParsemisMiner:
                             graph_map[graph_id].graph['embeddings'].append(appears_in_id)
 
             for graph in graph_map:
-                frequent_graphs.append(graph_map[graph])
+                fg = FrequentGraph(graph_map[graph], graph_map[graph].graph['embeddings'])
+                frequent_graphs.append(fg)
 
         return frequent_graphs
 
