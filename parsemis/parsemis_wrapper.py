@@ -10,6 +10,7 @@ import networkx as nx
 import logging as log
 import os
 import re
+import numpy as np
 
 
 class FrequentGraph:
@@ -19,6 +20,20 @@ class FrequentGraph:
         self._graph = graph
         self._appears_in = appears_in
         self._support = len(self._appears_in)
+
+    def to_string(self):
+        if len(self._graph.edges()) == 0:
+            return  ",".join(self._graph.nodes())
+        else:
+            edge_strings = []
+            for edge in self._graph.edges():
+                labels = ParsemisMiner.get_label_from_edge(self._graph, edge)
+                for label in labels:
+                    if (nx.is_directed(self._graph)):
+                        edge_strings.append("(%s)-[%s]->(%s)" % (edge[0], label, edge[1]))
+                    else:
+                        edge_strings.append("(%s)-[%s]-(%s)" % (edge[0], label, edge[1]))
+            return ", ".join(list(set(edge_strings)))
 
     @property
     def graph(self):
@@ -50,6 +65,8 @@ class ParsemisMiner:
         self.data_location = data_location
         if parsemis_location is None:
             self.parsemis_location = "%s/parsemis.jar" % os.path.dirname(os.path.realpath(__file__))
+        else:
+            self.parsemis_location = parsemis_location
 
         os.makedirs(self.data_location, exist_ok=True)
 
@@ -171,15 +188,18 @@ class ParsemisMiner:
                     node_dict = {}
 
                     for n_id, n in enumerate(graph.nodes()):
+                        if n == '':
+                            n = '[EMPTY_NODE]'
                         node_dict[n] = n_id
                         f.write("v %i %s\n" % (node_dict[n], n))
 
                     for edge in graph.edges():
-                        label = self.get_label_from_edge(graph, edge)
-                        if label is not None:
-                            f.write("e %i %i %s\n" % (node_dict[edge[0]], node_dict[edge[1]], label))
-                        else:
-                            f.write("e %i %i\n" % (node_dict[edge[0]], node_dict[edge[1]]))
+                        labels = self.get_label_from_edge(graph, edge)
+                        for label in labels:
+                            if label is not None:
+                                f.write("e %i %i %s\n" % (node_dict[edge[0]], node_dict[edge[1]], label))
+                            else:
+                                f.write("e %i %i\n" % (node_dict[edge[0]], node_dict[edge[1]]))
                 except Exception as e:
                     log.error(e)
             f.close()
@@ -195,24 +215,14 @@ class ParsemisMiner:
                         node_dict[n] = n_id + 1
                         f.write("v %i %s\n" % (node_dict[n], n))
                     for edge in graph.edges():
-                        label = self.get_label_from_edge(graph, edge)
-                        if label is not None:
-                            f.write("u %i %i %s\n" % (node_dict[edge[0]], node_dict[edge[1]], label))
-                        else:
-                            f.write("u %i %i\n" % (node_dict[edge[0]], node_dict[edge[1]]))
+                        labels = self.get_label_from_edge(graph, edge)
+                        for label in labels:
+                            if label is not None:
+                                f.write("u %i %i %s\n" % (node_dict[edge[0]], node_dict[edge[1]], label))
+                            else:
+                                f.write("u %i %i\n" % (node_dict[edge[0]], node_dict[edge[1]]))
                 except Exception as e:
                     log.error(e)
-
-    @staticmethod
-    def get_label_from_edge(g, edge, label='label'):
-        label = nx.get_edge_attributes(g, label)
-        if label is None:
-            return None
-        return label[edge]
-
-    @staticmethod
-    def get_label_from_nodes(g, start_node, end_node, label='label'):
-        return ParsemisMiner.get_label_from_edge(g, (start_node, end_node), label)
 
     def read_lg(self):
         """
@@ -291,4 +301,83 @@ class ParsemisMiner:
 
         return frequent_graphs
 
+    @staticmethod
+    def get_label_from_edge(g, edge, attribute_name='label'):
+        edge_attributes = g.get_edge_data(edge[0], edge[1])
+        if edge_attributes is None and nx.is_directed(g):
+            edge_attributes = g.get_edge_data(edge[1], edge[0])
 
+        labels = []
+        if type(g) == nx.MultiDiGraph or type(g) == nx.MultiGraph:
+            for index in edge_attributes:
+                if attribute_name in edge_attributes[index]:
+                    labels.append(edge_attributes[index][attribute_name])
+        else:
+            if attribute_name in edge_attributes:
+                labels.append(edge_attributes[attribute_name])
+
+        return labels
+
+    @staticmethod
+    def is_subgraph(graph, subgraph):
+        if not set(subgraph.nodes()).issubset(graph.nodes()):
+            return False
+        else:
+            for edge in subgraph.edges():
+                return ParsemisMiner.graph_has_edge(graph, subgraph, edge)
+        return True
+
+    @staticmethod
+    def graph_has_edge(graph, subgraph, edge):
+        if graph.has_edge(edge[0], edge[1]) or (not nx.is_directed(graph) and graph.has_edge(edge[1], edge[0])):
+            subgraph_edge_labels = ParsemisMiner.get_label_from_edge(subgraph, edge)
+            supergraph_edge_labels = ParsemisMiner.get_label_from_edge(graph, edge)
+            if ParsemisMiner.shares_edge_label(subgraph_edge_labels, supergraph_edge_labels) \
+                    or (len(subgraph_edge_labels) == 0 and len(supergraph_edge_labels) == 0):
+                return True
+            else:
+                return False
+
+    @staticmethod
+    def shares_edge_label(list_a, list_b):
+        return len(set(list_a).intersection(set(list_b))) > 0
+
+    @staticmethod
+    def calculate_dot_product_similarity(sub_graph: nx.Graph, super_graph: nx.Graph):
+        a_values = np.ones(len(sub_graph.nodes()) + len(sub_graph.edges()))
+        b_values = np.zeros(len(a_values))
+        for i, node in enumerate(sub_graph.nodes()):
+            if node in super_graph.nodes():
+                b_values[i] = 1
+        for i, edge in enumerate(sub_graph.edges()):
+            if ParsemisMiner.graph_has_edge(super_graph, sub_graph, edge):
+                b_values[i + len(sub_graph.nodes())] = 1
+
+        return np.prod(np.column_stack((a_values, b_values)), axis=1).sum() / len(a_values)
+
+
+    @staticmethod
+    def calculate_jaccard_similarity(sub_graph: nx.Graph, super_graph: nx.Graph):
+        """
+                Calculates the similiarity between a subgraph and a parent
+                :param sub_graph:
+                :param parent_graph:
+                :return:
+                """
+
+        set_a = set(sub_graph.nodes()).union(sub_graph.edges())
+        set_b = ParsemisMiner._calcuate_set_b(sub_graph, super_graph)
+
+        result = len(set_a.intersection(set_b)) / len(set_a.union(set_b))
+        return result
+
+    @staticmethod
+    def _calcuate_set_b(sub_graph: nx.Graph, super_graph: nx.Graph):
+        set_b = set()
+        for node in sub_graph.nodes():
+            if node in super_graph.nodes():
+                set_b.add(node)
+        for edge in sub_graph.edges():
+            if ParsemisMiner.graph_has_edge(super_graph, sub_graph, edge):
+                set_b.add(edge)
+        return set_b
